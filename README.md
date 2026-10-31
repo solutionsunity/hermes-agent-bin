@@ -23,8 +23,11 @@ official binaries themselves.
 ## Run
 
 Actions › Build › Run workflow, with a hermes-agent tag (e.g. `v0.22.5`). Each job's summary records the payload
-size, archive size, sha256 and launcher path; `verify darwin-*` records whether the macOS payload runs unsigned
-after a programmatic download and after a quarantined (browser) one.
+size, archive size, sha256 and launcher path.
+
+Actions › Verify darwin › Run workflow, with a Build run's id, answers whether its unsigned macOS payloads run once
+downloaded: programmatically, with every Mach-O signature checked and each failing library loaded, and quarantined
+the way a browser download leaves them. It stays out of `build.yml`, so that file copies as is.
 
 ## License
 
