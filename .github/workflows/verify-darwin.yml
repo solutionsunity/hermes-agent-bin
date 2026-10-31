@@ -91,7 +91,7 @@ jobs:
             case "$kind" in Mach-O*) ;; *) continue ;; esac
             total=$((total + 1))
             if codesign --verify "$file" 2>/dev/null; then signed=$((signed + 1)); continue; fi
-            reason=$(codesign --verify "$file" 2>&1 | tail -1 | sed "s|^$file: ||")
+            reason=$(codesign --verify "$file" 2>&1 | tail -1 | sed "s|^$file: ||" || true)
             name=${file#"$PAYLOAD"/}
             if ! lipo -archs "$file" 2>/dev/null | tr ' ' '\n' | grep -qx "$host"; then
               foreign=$((foreign + 1)); echo "foreign arch ($(lipo -archs "$file")): $name" >> "$RUNNER_TEMP/findings.txt"; continue
@@ -114,7 +114,7 @@ jobs:
           apps=""
           while IFS= read -r -d '' app; do
             case "$app" in *.app/*) continue ;; esac
-            verdict=$(codesign --verify --deep --strict "$app" 2>&1 | tail -1)
+            verdict=$(codesign --verify --deep --strict "$app" 2>&1 | tail -1 || true)
             apps="$apps<br>\`${app#"$PAYLOAD"/}\`: ${verdict:-valid}"
           done < <(find "$PAYLOAD" -type d -name '*.app' -print0)
           {
@@ -140,10 +140,13 @@ jobs:
       # What a browser download extracted by Archive Utility leaves: every
       # file quarantined. Reported, never gated — the answer is the finding.
       - name: Run after a browser download (quarantined)
+        if: ${{ !cancelled() }}
         shell: bash
         run: |
           chmod -R u+w "$PAYLOAD"
-          xattr -rw com.apple.quarantine "0081;$(printf %x "$(date +%s)");Safari;" "$PAYLOAD"
+          # -s marks a symlink itself; a dangling one has no target to mark.
+          xattr -r -s -w com.apple.quarantine "0081;$(printf %x "$(date +%s)");Safari;" "$PAYLOAD"
+          quarantined=$(xattr -rl "$PAYLOAD" | grep -c com.apple.quarantine || true)
           assess=$(spctl --assess --type execute -vv "$LAUNCHER" 2>&1 || true)
           status=0
           perl -e 'alarm 60; exec @ARGV' "$LAUNCHER" --version > "$RUNNER_TEMP/run.out" 2>&1 || status=$?
@@ -153,6 +156,7 @@ jobs:
             echo "### Browser download (quarantined)"
             echo "| | |"
             echo "|---|---|"
+            echo "| Files carrying quarantine | $quarantined |"
             echo "| \`spctl --assess\` | ${assess//$'\n'/ } |"
             echo "| \`hermes --version\` | $ran |"
           } >> "$GITHUB_STEP_SUMMARY"
