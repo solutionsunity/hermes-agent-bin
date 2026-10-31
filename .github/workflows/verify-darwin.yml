@@ -4,8 +4,8 @@ name: Verify darwin
 # A fresh runner fetches the archive programmatically (no quarantine
 # attribute), checks every Mach-O signature and loads each one that fails,
 # then quarantines the tree the way a browser download does and asks
-# Gatekeeper. Findings go to the job summary; only an unrunnable payload
-# after a programmatic download fails the job.
+# Gatekeeper. Findings go to the job summary and the log; only an
+# unrunnable payload after a programmatic download fails the job.
 
 on:
   workflow_dispatch:
@@ -60,7 +60,7 @@ jobs:
             echo "HERMES_HOME=$RUNNER_TEMP/home/.hermes"
           } >> "$GITHUB_ENV"
           mkdir -p "$RUNNER_TEMP/home"
-          echo "## $TARGET — \`$archive\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "## $TARGET — \`$archive\`" | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Run after a programmatic download
         shell: bash
@@ -74,7 +74,7 @@ jobs:
             echo "| Gatekeeper | $(spctl --status 2>&1) |"
             echo "| Files carrying quarantine | $quarantined |"
             echo "| \`hermes --version\` | ran: $version |"
-          } >> "$GITHUB_STEP_SUMMARY"
+          } | tee -a "$GITHUB_STEP_SUMMARY"
 
       # codesign --verify alone over-reports: a framework's inner binary is
       # sealed by its bundle, and a slice for another architecture never runs
@@ -135,7 +135,7 @@ jobs:
             sort "$RUNNER_TEMP/findings.txt"
             echo '```'
             echo "</details>"
-          } >> "$GITHUB_STEP_SUMMARY"
+          } | tee -a "$GITHUB_STEP_SUMMARY"
 
       # What a browser download extracted by Archive Utility leaves: every
       # file quarantined. Reported, never gated — the answer is the finding.
@@ -159,4 +159,4 @@ jobs:
             echo "| Files carrying quarantine | $quarantined |"
             echo "| \`spctl --assess\` | ${assess//$'\n'/ } |"
             echo "| \`hermes --version\` | $ran |"
-          } >> "$GITHUB_STEP_SUMMARY"
+          } | tee -a "$GITHUB_STEP_SUMMARY"
