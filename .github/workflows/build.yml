@@ -41,12 +41,18 @@ jobs:
     env:
       TAG: ${{ inputs.tag }}
       TARGET: ${{ matrix.target.label }}
-      # Outside the checkout: preparation admits only a clean source tree.
-      PAYLOAD: ${{ runner.temp }}/agent-payload
-      PAYLOAD_WORK: ${{ runner.temp }}/payload-job
-      PAYLOAD_CACHE: ${{ runner.temp }}/payload-inputs
       PYTHONUTF8: '1'
     steps:
+      # Outside the checkout: preparation admits only a clean source tree.
+      - name: Place the build roots
+        shell: bash
+        run: |
+          {
+            echo "PAYLOAD=$RUNNER_TEMP/agent-payload"
+            echo "PAYLOAD_WORK=$RUNNER_TEMP/payload-job"
+            echo "PAYLOAD_CACHE=$RUNNER_TEMP/payload-inputs"
+          } >> "$GITHUB_ENV"
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: NousResearch/hermes-agent
