@@ -117,7 +117,7 @@ jobs:
             echo "| Archive | \`$archive\` — $(du -h "$archive" | cut -f1) ($(wc -c < "$archive" | tr -d ' ') bytes) |"
             echo "| sha256 | \`$(cut -d' ' -f1 "$archive.sha256")\` |"
             echo "| Launcher | \`$launcher\` |"
-          } >> "$GITHUB_STEP_SUMMARY"
+          } | tee -a "$GITHUB_STEP_SUMMARY"
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
