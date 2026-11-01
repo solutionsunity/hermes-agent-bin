@@ -1,0 +1,100 @@
+name: Spike ACP profile
+
+# Spike: does an ACP-only payload — the agent core with the acp and mcp
+# extras, six tools, no offline uv cache — build, pass Hermes' smoke test
+# and answer an ACP handshake? Applies spike/acp-profile.patch to the tag
+# and builds linux-x64 with the same commands as build.yml.
+
+on:
+  push:
+    branches: [spike/acp-profile]
+
+permissions:
+  contents: read
+
+jobs:
+  spike:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      TAG: v0.22.5
+      PYTHONUTF8: '1'
+    steps:
+      - name: Place the build roots
+        run: |
+          {
+            echo "PAYLOAD=$RUNNER_TEMP/agent-payload"
+            echo "PAYLOAD_WORK=$RUNNER_TEMP/payload-job"
+            echo "PAYLOAD_CACHE=$RUNNER_TEMP/payload-inputs"
+          } >> "$GITHUB_ENV"
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: bin
+          persist-credentials: false
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: NousResearch/hermes-agent
+          ref: v0.22.5
+          path: hermes-agent
+          fetch-tags: true
+          persist-credentials: false
+
+      # Preparation admits only a clean checkout, so the patch is committed.
+      - name: Apply the ACP profile
+        working-directory: hermes-agent
+        run: |
+          git apply "$GITHUB_WORKSPACE/bin/spike/acp-profile.patch"
+          git -c user.name=spike -c user.email=spike@localhost commit -qam "ACP profile (spike)"
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.13"
+
+      - name: Prepare native payload dependencies
+        working-directory: hermes-agent
+        run: |
+          python3 -S -B scripts/bundles/native_build.py --prepare-only \
+            --source "$PWD" --work "$PAYLOAD_WORK" --cache "$PAYLOAD_CACHE" \
+            --out "$PAYLOAD" --ref HEAD
+
+      - name: Assemble the prepared payload without dependency acquisition
+        working-directory: hermes-agent
+        run: python3 -S -B scripts/bundles/native_build.py --prepared "$PAYLOAD.prepared.json"
+
+      - name: Smoke test the relocated payload (network disabled)
+        working-directory: hermes-agent
+        continue-on-error: true
+        run: sudo --preserve-env=PATH unshare --net bash scripts/smoke-payload.sh "$PAYLOAD"
+
+      - name: ACP handshake
+        run: node bin/spike/acp-handshake.mjs "$PAYLOAD"
+
+      - name: Measure
+        if: ${{ !cancelled() }}
+        run: |
+          mkdir -p dist
+          archive="hermes-agent-$TAG-acp-linux-x64.tar.gz"
+          tar -czf "dist/$archive" -C "$PAYLOAD" .
+          (cd dist && sha256sum "$archive" > "$archive.sha256")
+          {
+            echo "### ACP profile, linux-x64"
+            echo "| | |"
+            echo "|---|---|"
+            echo "| Payload on disk | $(du -sh "$PAYLOAD" | cut -f1) |"
+            echo "| Archive | $(du -h "dist/$archive" | cut -f1) ($(wc -c < "dist/$archive" | tr -d ' ') bytes) |"
+            echo "| Extras | $(python3 -c 'import json,sys; print(", ".join(json.load(open(sys.argv[1]))["extras"]))' "$PAYLOAD/enabled-features.json") |"
+            echo
+            echo '```'
+            du -sh "$PAYLOAD"/* "$PAYLOAD"/tools/* | sort -rh
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: ${{ !cancelled() }}
+        with:
+          name: hermes-agent-v0.22.5-acp-linux-x64
+          path: dist/
+          compression-level: 0
+          retention-days: 30

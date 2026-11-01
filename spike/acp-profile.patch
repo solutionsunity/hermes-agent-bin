@@ -1,0 +1,50 @@
+diff --git a/scripts/bundles/native.py b/scripts/bundles/native.py
+index aae96cf..5c8e996 100644
+--- a/scripts/bundles/native.py
++++ b/scripts/bundles/native.py
+@@ -17,6 +17,13 @@ from pm.lock import Facts
+ from pm.registry import get_package, walk
+ from pm.store import current_target
+ 
++# ACP profile: the agent core behind `hermes-acp`, with MCP for the servers
++# an ACP client hands over at session open.
++ACP_PROFILE_EXTRAS = ("acp", "mcp")
++ACP_PROFILE_TOOLS = {"python", "uv", "node", "npm", "ripgrep", "git"}
++ACP_PROFILE_NO_UV_CACHE = True
++
++
+ def _bundle_package_names() -> list[str]:
+     names = [
+         n
+@@ -193,6 +200,7 @@ def _prepare_native(*, out: Path, ref: str, source: Path, cache: Path,
+     names = [
+         n for n in _bundle_package_names()
+         if get_package(n).missing_reason(current_target()) is None
++        and n in ACP_PROFILE_TOOLS
+     ]
+     from pm import prepare_tools, stage_tools
+ 
+@@ -239,9 +247,9 @@ def _prepare_native(*, out: Path, ref: str, source: Path, cache: Path,
+ 
+     # Cold native wheels need a larger budget than interactive installs.
+     build_environment(source=repo_dir, python=python_bin, out=venv_dir,
+-                      env=env, cache=cache, all_extras=True, sealed=True, explicit=True,
++                      env=env, cache=cache, extras=ACP_PROFILE_EXTRAS, sealed=True, explicit=True,
+                       timeout=2 * 60 * 60)
+-    print("✓ venv (all extras, on the staged interpreter)")
++    print(f"✓ venv (extras {', '.join(ACP_PROFILE_EXTRAS)}, on the staged interpreter)")
+ 
+     # Inventory the staged interpreter before publishing the bundle contract.
+     from pm.features import installed_extras, write_features
+@@ -265,7 +273,10 @@ def _prepare_native(*, out: Path, ref: str, source: Path, cache: Path,
+     if payload_cache.exists():
+         shutil.rmtree(payload_cache, ignore_errors=True)
+     src_cache = cache
+-    if src_cache.is_dir():
++    if ACP_PROFILE_NO_UV_CACHE:
++        payload_cache.mkdir()
++        print("✓ uv-cache (empty: no offline rebuilds in this profile)", flush=True)
++    elif src_cache.is_dir():
+         print(f"  uv-cache: copying {src_cache} → payload...", flush=True)
+         stage_uv_cache(src_cache, payload_cache)
+         pruned = prune_uv_cache_to_lock(payload_cache, repo_dir)
